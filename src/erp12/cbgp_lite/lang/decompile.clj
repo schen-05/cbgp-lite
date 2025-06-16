@@ -4,7 +4,8 @@
             [erp12.cbgp-lite.lang.compile :as co]
             [erp12.cbgp-lite.lang.lib :as lib]
             [erp12.cbgp-lite.search.plushy :as pl]
-            [erp12.cbgp-lite.task :as tsk]))
+            [erp12.cbgp-lite.task :as tsk]
+            ))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;;;;;;;;;;;;; Compilation testing
@@ -110,7 +111,6 @@
                 {:gene :var
                  :name `lib/min'}
                 {:gene :apply}]]
-        
     (compile-debugging2 genome
                         task
                         [5 6 -33 9]
@@ -300,7 +300,9 @@
   (cond
     (and (map? map-or-vec)
          (= (:op map-or-vec) :local))
-    map-or-vec
+    (do 
+      ;; (println "local found! type whatever: " (:tag map-or-vec) (:form map-or-vec))
+      map-or-vec)
 
     (map? map-or-vec)
     (first (filter #(not (nil? %))
@@ -318,6 +320,7 @@
 (defn get-fn-symbol
   "Finds the CBGP function name for this ast-fn-name"
   [ast-fn-name tag args task]
+  ;; (println "Firstp Task: " task ast-fn-name)
   (cond
     ;; Because of the phrasing, this needs to be hard coded
     (= ast-fn-name 'intCast)
@@ -392,8 +395,28 @@
                               "-set"
                               (map? (:val (first args)))
                               "-map"
+                              (vector? (:val (first args)))
+                              "-vec"
                               :else
-                              "-vec"))]
+                              (cond
+                                (= 'string?
+                                   (:type (get (:input->type task)
+                                               (:form (find-local args)))))
+                                "-str"
+                                (= :set
+                                   (:type (get (:input->type task)
+                                               (:form (find-local args)))))
+                                "-set"
+                                (= :map
+                                   (:type (get (:input->type task)
+                                               (:form (find-local args)))))
+                                "-map"
+                                (= :vector
+                                   (:type (get (:input->type task)
+                                               (:form (find-local args)))))
+                                "-vec"
+                                :else
+                                "-BAD")))]
               ;; I didn't want to do this but CBGP naming 
               ;; "conventions" forced my hand
               (if (= symb "count-str")
@@ -464,6 +487,7 @@
   "Decompiles AST into a CBGP genome."
   ([ast] (decompile-ast ast {}))
   ([{:keys [op val tag args children] :as ast} task]
+  ;;  (println "Decomp Task: " task)
    (cond
     ;; Handle constants
      (= :const op)
@@ -482,7 +506,7 @@
      (let [ast-fn-name (if (= op :static-call)
                          (:method ast)
                          (-> ast :fn :form))
-           raw-decompiled-args (map decompile-ast args)
+           raw-decompiled-args (map #(decompile-ast % task) args )
            decompiled-args (flatten (reverse raw-decompiled-args))]
        (concat decompiled-args
                (list {:gene :var :name (get-fn-symbol ast-fn-name tag args task)}
@@ -503,7 +527,7 @@
     ;; Handle if
      (= op :if)
      (let [ast-fn-name 'if
-           raw-decompiled-args (map decompile-ast (map ast children))
+           raw-decompiled-args (map #(decompile-ast % task) (map ast children))
            decompiled-args (flatten (reverse raw-decompiled-args))]
        (concat decompiled-args
                (list {:gene :var :name (get-fn-symbol ast-fn-name tag args task)}
@@ -521,7 +545,7 @@
                         :methods
                         first
                         :body)
-                    task)
+                    task) 
 
      :else
      (do
@@ -552,10 +576,6 @@
   (decompile-ast
    (ana.jvm/analyze '(conj #{1 2 3} 8)))
 
-  (compile-debugging
-   (decompile-ast
-    (ana.jvm/analyze '(conj [1 2 3] 8)))
-   (lib/vector-of lib/INT))
 
   (compile-debugging
    (decompile-ast
@@ -574,44 +594,10 @@
   (decompile-ast
    (ana.jvm/analyze '(map inc '(1 2 3))))
 
-  (decompile-ast
-   (ana.jvm/analyze '(map inc (conj [1 2 3] 8))))
+  (decompile-ast (ana.jvm/analyze '(map inc [1 2 3])))
 
-  ;; these are working for now, but maybe only because of vec default
+  (ana.jvm/analyze '(hash-map "a" 1))
 
-  (compile-debugging
-   (decompile-ast
-    (ana.jvm/analyze '(map inc [1 2 3])))
-   (lib/vector-of lib/INT))
-
-  (compile-debugging
-   (decompile-ast
-    (ana.jvm/analyze '(map inc (conj [1 2 3] 8))))
-   (lib/vector-of lib/INT))
-
-  ;; not working
-
-  (ana.jvm/analyze '(map count ["sad" "wwwwww" ""]))
-
-  (decompile-ast
-   (ana.jvm/analyze '(map count ["sad" "wwwwww" ""])))
-
-  (ana.jvm/analyze '(map count (map str [1 2 3])))
-
-  (decompile-ast
-   (ana.jvm/analyze '(map count (map str [1 2 3]))))
-
-  (compile-debugging
-   (decompile-ast
-    (ana.jvm/analyze '(map count ["sad" "wwwwww" ""])))
-   (lib/vector-of lib/INT))
-
-  (conj #{4 5} 7)
-
-  (decompile-ast (ana.jvm/analyze '(< 4 5)))
-
-  (compile-debugging (decompile-ast (ana.jvm/analyze '(< 4 5)))
-                     {:type 'boolean?})
-
+  (ana.jvm/analyze 'count) 
   )
 
